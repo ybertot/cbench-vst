@@ -108,6 +108,15 @@ assert (for2 : generic_format radix2 (FLT_exp (3 - 128 - 24) 24) 2).
 now apply round_generic; auto; apply valid_rnd_round_mode.
 Qed.
 
+Lemma round'4 : round' 4 = 4%R.
+Proof.
+assert (for2 : generic_format radix2 (FLT_exp (3 - 128 - 24) 24) 4).
+  replace 4%R with (F2R (Float radix2 (cond_Zopp false (2 ^ 23)) (-21))).
+    now apply generic_format_canonic, canonic_canonic_mantissa.
+  compute; lra.
+now apply round_generic; auto; apply valid_rnd_round_mode.
+Qed.
+
 Lemma round_le' (x y : R) : (x <= y)%R -> (round' x <= round' y)%R.
 Proof.
 intros xley.
@@ -321,9 +330,6 @@ now rewrite <- absx; lra.
 Qed.
 
 Definition ulp1 := bpow radix2 (-23).
-
-Lemma inv_add_error x : (1 + x <> 0)%R -> (/ (1 + x) = 1 - x + x ^ 2 /(1 + x))%R.
-Proof. now intros; field.  Qed.
 
 Lemma canonic_exp_bpow : forall x e, x <> 0%R -> 
   -149 < canonic_exp radix2 f32_exp x ->
@@ -736,16 +742,20 @@ Qed.
 Definition body_exp_R x y :=
    round' (round' (y + round' (x / y)) / 2).
 
+Lemma inv_add_error x : (1 + x <> 0)%R -> (/ (1 + x) = 1 - x + x ^ 2 /(1 + x))%R.
+Proof. now intros; field.  Qed.
+
 Lemma target x y :
   let x' := B2R 24 128 x in
   let y' := B2R 24 128 y in
+  (y' <= x')%R ->
   (y' <= 2 * sqrt x')%R ->
   (1 <= x' < 4)%R ->
   (round radix2 f32_exp (round_mode mode_DN) (sqrt x') <= y')%R ->
   (y' <= body_exp_R x' y')%R ->
-  (Rabs (y' - sqrt x') < ulp1)%R.
+  (Rabs (body_exp_R x' y' - sqrt x') < ulp1)%R.
 Proof.
-intros x' y' inty intx lowerbound stop.
+intros x' y' yx inty intx lowerbound stop.
 assert (sge1 : (1 <= sqrt x')%R).
   rewrite <- sqrt_1; apply sqrt_le_1_alt; lra.
 assert (yge1 : (1 <= y')%R).
@@ -759,22 +769,88 @@ assert (sle2 : (sqrt x' < 2)%R).
 assert (ulpbnd : ulp radix2 f32_exp (sqrt x') = ulp1).
   apply ulp_1_2; lra.
 set (ulps := ulp radix2 f32_exp (sqrt x')).
-destruct (Rle_lt_dec (sqrt x' + 1) y').
-  enough (body_exp_R x' y' < y')%R by lra.
+assert (ulps1 : ulps = ulp1) by (apply ulp_1_2; lra).
+assert (u4 : (ulps < /4)%R) by (rewrite ulps1; unfold ulp1; simpl bpow; lra).
+assert (ulpgt0 : (0 < ulp1)%R).
+  unfold ulp1; apply bpow_gt_0.
+assert (rh : (round' (/2) = /2)%R). (* TODO remove duplication *)
+  apply round_generic; try typeclasses eauto.
+  replace (/2)%R with (bpow radix2 (-1)) by (compute; lra).
+  apply generic_format_bpow'.
+    apply FLT_exp_valid; reflexivity.
+  apply Z.lt_le_incl; reflexivity.
+assert (tm1 :=  @error_le_ulp radix2 f32_exp
+        (@FLT_exp_valid (3 - 128 - 24) 24 eq_refl)
+        (round_mode mode_NE) (valid_rnd_round_mode _)
+        (x' / y')).
+apply Rabs_le_inv in tm1.
+assert (tm2 :=  @error_le_ulp radix2 f32_exp
+        (@FLT_exp_valid (3 - 128 - 24) 24 eq_refl)
+        (round_mode mode_NE) (valid_rnd_round_mode _)
+        (y' + round' (x' / y'))).
+apply Rabs_le_inv in tm2.
+assert (tm3 :=  @error_le_ulp radix2 f32_exp
+        (@FLT_exp_valid (3 - 128 - 24) 24 eq_refl)
+        (round_mode mode_NE) (valid_rnd_round_mode _)
+        (round' (y' + round' (x' / y')) / 2)).
+apply Rabs_le_inv in tm3.
+assert (1 <= round' (x' / y'))%R.
+  rewrite <- round'1; apply round_le', Rmult_le_reg_r with y';[lra |].
+  unfold Rdiv; rewrite Rmult_assoc, Rinv_l, Rmult_1_r; lra.
+assert (x' / y' <= 4)%R.
+  apply Rmult_le_reg_r with y';[lra | ].
+  unfold Rdiv; rewrite Rmult_assoc, Rinv_l, Rmult_1_r; lra.
+assert (round' (x' / y') <= 4)%R.
+  now rewrite <- round'4; apply round_le'.
+assert (ulp radix2 f32_exp (y' + round' (x' / y')) <= 4 * ulps)%R.
+  rewrite ulp_neq_0; try lra.
+  destruct (Rle_lt_dec 4 (y' + round' (x' / y'))).
+    rewrite (canonic_exp_32 3); try (simpl bpow; lra); try lia.
+    rewrite ulps1; unfold ulp1; simpl bpow; lra.
+  rewrite (canonic_exp_32 2); try (simpl bpow; lra); try lia.
+  rewrite ulps1; unfold ulp1; simpl bpow; lra.
+destruct (Rle_lt_dec (sqrt x' + /4) y').
   assert (x' / y' < sqrt x')%R.
     apply Rmult_lt_reg_r with y';[lra | ].
     unfold Rdiv; rewrite Rmult_assoc, Rinv_l, Rmult_1_r by lra.
     rewrite <- (sqrt_sqrt x') at 1 by lra.
     apply Rmult_lt_compat_l; lra.
+  enough (body_exp_R x' y' < y')%R by lra.
   assert (round' (x' / y') <= sqrt x' + ulps)%R.
-    assert (tm1 :=  @error_le_ulp radix2 f32_exp
-        (@FLT_exp_valid (3 - 128 - 24) 24 eq_refl)
-        (round_mode mode_NE) (valid_rnd_round_mode _)
-        (x' / y')).
-    apply Rabs_le_inv in tm1.
     apply Rle_trans with (x' / y' + ulp radix2 f32_exp (x' / y'))%R.
-    
-    
+      lra.    
+    apply Rplus_le_compat; try lra.    
+    apply ulp_le_pos; try typeclasses eauto; try lra.
+      now apply FLT_exp_valid.
+    apply Rmult_le_pos;[| apply Rlt_le, Rinv_0_lt_compat]; lra.
+  assert (y' + round' (x' / y') <= y' + sqrt x' + ulps)%R by lra.
+  assert (round' (y' + round' (x' / y')) <= y' + sqrt x' + 5 * ulps)%R.
+    assert (1 <= round' (x' / y'))%R.
+      rewrite <- round'1; apply round_le', Rmult_le_reg_r with y';[lra |].
+    unfold Rdiv; rewrite Rmult_assoc, Rinv_l, Rmult_1_r; lra.
+    lra.
+  assert (round' (y' + round' (x' / y')) / 2 <
+                 (y' + sqrt x') / 2 + 3 * ulps)%R by lra.
+  assert(final: (round' (round' (y' + round' (x' / y')) / 2) < 
+                      (y' + sqrt x') / 2 + 7 * ulps)%R).
+  assert (ulp radix2 f32_exp (round' (y' + round' (x' / y')) / 2) <=
+            4 * ulps)%R;[ | lra].
+    rewrite ulp_neq_0; cycle 1. (* TODO : here lra loops. *)
+      clear - H2 tm2 H yge1 u4; lra.
+    destruct (Rle_lt_dec 2 (round' (y' + round' (x' / y')) / 2)).
+      rewrite (canonic_exp_32 2); try lia; try (simpl bpow; lra).
+      rewrite ulps1; unfold ulp1; simpl bpow; clear; lra.
+    destruct (Rle_lt_dec 1 (round' (y' + round' (x' / y')) / 2)).
+      rewrite (canonic_exp_32 1); try lia; try (simpl bpow; lra).
+      rewrite ulps1; unfold ulp1; simpl bpow; lra.
+    rewrite (canonic_exp_32 0); try lia; try (simpl bpow; lra).
+  unfold body_exp_R; clear u4.
+  assert (usmall : (ulps < /256)%R).
+    rewrite ulps1; unfold ulp1; simpl bpow; lra.
+  apply Rlt_le_trans with (1 := final); lra.
+set (e := (y' - sqrt x')%R).
+
+Qed.
 Lemma body_exp_decrease2 x y :
   let x' := B2R 24 128 (pos_float_val x) in
   let y' := B2R 24 128 (pos_float_val y) in
