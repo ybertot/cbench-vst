@@ -74,7 +74,9 @@ Transparent Float32.add.
 Transparent Float32.of_int.
 Transparent Int.repr.
 
-Notation round' := (round radix2 (FLT_exp (3 - 128 - 24) 24) (round_mode mode_NE)).
+Definition f32_exp := FLT_exp (3 - 128 -24) 24.
+
+Notation round' := (round radix2 f32_exp (round_mode mode_NE)).
 
 Record pos_float :=
  { pos_float_val : float32;
@@ -85,14 +87,17 @@ Definition body_exp_pos_R x y :=
   round' (round' (B2R 24 128 (pos_float_val y) +
       round' (B2R 24 128 (pos_float_val x) / B2R 24 128 (pos_float_val y))) / 2).
 
-Lemma round'1 : round' 1 = 1%R.
+Lemma round1 m: round radix2 f32_exp (round_mode m) 1 = 1%R.
 Proof.
-assert (for1 : generic_format radix2 (FLT_exp (3 - 128 - 24) 24) 1).
+assert (for1 : generic_format radix2 f32_exp 1).
   replace 1%R with (F2R (Float radix2 (cond_Zopp false (2 ^ 23)) (-23))).
     now apply generic_format_canonic, canonic_canonic_mantissa.
   compute; lra.
 now apply round_generic; auto; apply valid_rnd_round_mode.
 Qed.
+
+Lemma round'1 : round' 1 = 1%R.
+Proof. now apply round1. Qed.
 
 Lemma round'2 : round' 2 = 2%R.
 Proof.
@@ -193,8 +198,6 @@ split.
 unfold x' at 2; rewrite <- round_B2R'; fold x'.
 apply round_le'; tauto.
 Qed.
-
-Definition f32_exp := FLT_exp (3 - 128 -24) 24.
 
 Lemma body_exp_sum_bounds x y :
   (1 < B2R 24 128 (pos_float_val x) <  B2R 24 128 predf32max)%R ->
@@ -317,6 +320,8 @@ apply Rmult_le_compat_r.
 now rewrite <- absx; lra.
 Qed.
 
+Definition ulp1 := bpow radix2 (-23).
+
 Lemma inv_add_error x : (1 + x <> 0)%R -> (/ (1 + x) = 1 - x + x ^ 2 /(1 + x))%R.
 Proof. now intros; field.  Qed.
 
@@ -375,6 +380,15 @@ unfold round, F2R; simpl.
 rewrite mantissa_bpow by tauto.
 rewrite canonic_exp_bpow by tauto.
 now rewrite bpow_plus, Rmult_assoc.
+Qed.
+
+Lemma ulp_1_2 x : (1 <= x < 2)%R ->
+   ulp radix2 f32_exp x = ulp1.
+Proof.
+intros intx.
+rewrite ulp_neq_0; try lra.
+rewrite (canonic_exp_32 1); try (simpl bpow; lra); try lia.
+reflexivity.
 Qed.
 
 Lemma canonic_exp_m23 x :
@@ -448,6 +462,7 @@ assert (divlt : Rlt_bool (Rabs (round' (x' / y'))) (bpow radix2 128) = true).
   apply Rlt_bool_true.
   rewrite Rabs_pos_eq;[ | lra].
   now assert (tmp5:= conj boundpredf32max boundf32max); lra.
+fold f32_exp in tm4.
 rewrite divlt in tm4; destruct tm4 as [vdivxy [findivxy signdivxy]].
 clear divlt.
 unfold Float32.add.
@@ -463,7 +478,7 @@ assert (pluslt :
   apply Rlt_bool_true; unfold divxy'; rewrite vdivxy, Rabs_pos_eq.
     now assert (tmp5:= conj boundpredf32max boundf32max); lra.
   lra.      
-fold y' divxy' in tm6; rewrite pluslt in tm6; clear pluslt.
+fold y' divxy' f32_exp in tm6; rewrite pluslt in tm6; clear pluslt.
 destruct tm6 as [vsum [finsum signsum]].
 assert (fin2 : is_finite 24 128 (Float32.of_int (Int.repr 2)) = true).
   reflexivity.
@@ -490,6 +505,7 @@ replace (B2R 24 128 (Float32.of_int (Int.repr 2))) with 2%R
 rewrite vsum; unfold divxy'; rewrite vdivxy.
 rewrite Rabs_pos_eq;[ | lra].
   now assert (tmp5:= conj boundpredf32max boundf32max); lra.
+fold f32_exp in tm4.
 rewrite explt in tm4; destruct tm4 as [vexp [finexp signexp]].
 replace (B2R 24 128 (Float32.of_int (Int.repr 2))) with 2%R in vexp
        by now compute; lra.
@@ -605,64 +621,6 @@ assert (-24 <= (cexp' (round' (y' + round' (x' / y')) / 2)) <= -22).
 rewrite round_mult_bpow; try lra; try lia.
 Qed.
 
-Lemma canonic_exp_32 e r :
-  -150 < e ->
-  bpow radix2 (e - 1) <= r < bpow radix2 e ->
-  canonic_exp radix2 f32_exp r = e - 24.
-assert (canonic_exp radix2 f32_exp x' = -23 \/
-        canonic_exp radix2 f32_exp x' = -22 \/
-        canonic_exp radix2 f32_exp x' = -21).
-  destruct (Rle_lt_dec 2 x') as [xle2 | xgt2].
-    destruct (Req_dec x' 4) as [xis4 |xn4].
-    right; right.
-    rewrite canonic_exp_m21; try lra.
-      apply ln_beta_unique; rewrite xis4, Rabs_pos_eq; try lra.
-      compute; lra.
-    right; left.
-    rewrite canonic_exp_m22; try lra.
-    apply ln_beta_unique; rewrite Rabs_pos_eq; try lra.
-    replace (bpow radix2 (2 - 1)) with 2%R by (compute; lra).
-    replace (bpow radix2 2) with 4%R; try lra.
-    compute; lra.
-  left.
-  rewrite canonic_exp_m23; try lra.
-  apply ln_beta_unique; rewrite Rabs_pos_eq; try lra.
-  replace (bpow radix2 (1 - 1)) with 1%R by (compute; lra).
-  replace (bpow radix2 1) with 2%R; try lra.
-  compute; lra.
-rewrite round_mult_bpow, <- Rmult_plus_distr_r; try lra.
-assert (sumn0 : (y' + round' (x' / y') <> 0)%R).
-
-rewrite round_mult_bpow.
-
-
-
-assert (ln_beta_val _ y' (ln_beta radix2 y') = 1).
-  destruct (ln_beta radix2 y') as [v vp].
-  assert (vp' := vp yn0).
-
-Qed.
-
-Lemma body_exp_pos_R_scale x y e:
-  let x' := B2R 24 128 x in
-  let y' := B2R 24 128 y in
-  (0 < x')%R -> (0 < y')%R ->
-  is_finite_strict 24 128 x = true ->
-  is_finite_strict 24 128 y = true ->
-  0 < ln_beta radix2 x' < 2 ->
-  0 < ln_beta radix2 y' < 1 -> 
-  B2R 24 128 (body_exp (Float32.mul x (float32pow2 (2 * e))) (Float32.mul y (float32pow2 e)))
-      = 
-  (B2R 24 128 (body_exp x y) * bpow radix2 e)%R.
-Proof.
-lazy zeta.
-set (x' := B2R 24 128 x).
-set (y' := B2R 24 128 y).
-intros x'gt0 y'gt0 finx finy magx magy.
-fAdmitted.
-
-
-
 Lemma body_exp_decrease1 x y :
   let x' := B2R 24 128 (pos_float_val x) in
   let y' := B2R 24 128 (pos_float_val y) in
@@ -775,91 +733,56 @@ change (round radix2 f32_exp (round_mode mode_NE)
 lra.
 Qed.
 
-Lemma body_exp_finite_above_1 x y :
-  (1 < B2R 24 128 (pos_float_val x))%R ->
-  (sqrt (B2R 24 128 (pos_float_val x)) <= B2R 24 128 (pos_float_val y) <= 
-      B2R 24 128 (pos_float_val x))%R ->
-  is_finite 24 128 (body_exp (pos_float_val x) (pos_float_val y)) = true.
-Proof.
-intros xgt1 inty.
-destruct x as [x finx x0]; destruct y as [y finy y0]; simpl in xgt1, inty |- *.
-set (x' := B2R 24 128 x); set (y':= B2R 24 128 y).
-unfold body_exp.
-fold x' in xgt1, inty, x0; fold y' in inty, y0.
-set (q := Float32.div x y).
-assert (ygt0 : y' <> 0%R) by lra.
-assert (divint : (1 <= x' / y' <= sqrt x')%R).
-  split.
-    apply Rmult_le_reg_r with y';[lra | ].
-    now unfold Rdiv; rewrite Rmult_assoc, Rinv_l, Rmult_1_l, Rmult_1_r; lra.
-  apply Rmult_le_reg_r with y';[lra | ].
-  unfold Rdiv; rewrite Rmult_assoc, Rinv_l, Rmult_1_r; [ | lra].
-  rewrite <- (sqrt_sqrt x') at 1;[ | lra].
-  enough (0 < sqrt x')%R by nra.
-  now apply sqrt_lt_R0.
-assert (xbelow : (x' < bpow radix2 128)%R).
-  revert finx; destruct x as [ aa | aa | | sign xval xexp bounded_prop ] eqn:x_eq; 
-  move x_eq after divint; try discriminate.
-    now intros _; revert x0; unfold x'; compute; lra.
-  intros _.
-  assert (bp' := bounded_prop).
-  apply bounded_lt_emax in bp'; unfold x', B2R.
-  rewrite F2R_cond_Zopp.
-  assert (vsign : sign = false).
-    revert x0; unfold x', B2R; rewrite F2R_cond_Zopp.
-    unfold F2R, cond_Ropp; simpl.
-    assert (pos_u : (0 < P2R xval * bpow radix2 xexp)%R).
-      apply Rmult_lt_0_compat.
-        now rewrite P2R_INR; apply pos_INR_nat_of_P.
-      now apply bpow_gt_0.
-    destruct sign; auto.
-    set (u := (_ * _)%R); fold u in pos_u; lra.
-  now rewrite vsign; simpl cond_Ropp.
-assert (sqrtxbelow : (sqrt x' < x')%R).
-  now apply sqrt_less_alt.
-assert (divltx : (x' / y' < x')%R) by lra.
-(*assert (rnd_div_int : (1 <= round radix2 (FLT_exp (3 - 128 - 24) 24)
-                  (round_mode mode_NE) (x' / y') <=
-                      round radix2 (FLT_exp (3 - 128 - 24) 24) (round_mode mode_NE) x')%R). *)
-assert (rnd_div_int : (1 <= round' (x' / y') <= round' x')%R).
-  split.
-    set (repr1 := Float radix2 (cond_Zopp false (2 ^ 23)) (-23)).
-    assert (generic_format radix2 (FLT_exp (3 - 128 - 24) 24) 1).
-      replace 1%R with (F2R repr1) by now unfold F2R; simpl; lra.
-      now apply generic_format_canonic, canonic_canonic_mantissa.
-    replace 1%R with (round' 1).
-      apply round_le.
-          apply fexp_correct; reflexivity.
-        now apply valid_rnd_round_mode.
-      tauto.
-    apply round_generic.
-      now apply valid_rnd_round_mode.
-    easy.
-  apply round_le.
-      apply fexp_correct; reflexivity.
-    apply valid_rnd_round_mode.
-  lra.
-assert (rndx' : round' x' = x').
-  assert (tmp := generic_format_FLT radix2 _ 24 _ (FLT_format_B2R 24 128 eq_refl x)).
-  now apply round_generic;[ apply valid_rnd_round_mode | exact tmp ].
-assert (is_finite 24 128 q = true).
-  unfold q, Float32.div.
-  assert (tmp := Bdiv_correct 24 128 eq_refl eq_refl Float32.binop_pl mode_NE x y ygt0).
-rewrite Rlt_bool_true in tmp; cycle 1.
-rewrite Rabs_pos_eq; fold x' y'.
-lra.
-lra.
-destruct tmp as [a [b c]].
-rewrite <-finx.
-exact b.
-rewrite b.
-Qed.
+Definition body_exp_R x y :=
+   round' (round' (y + round' (x / y)) / 2).
 
-
-Lemma body_exp_pos x y :
-  (0 < B2R 24 128 (body_exp (pos_float_val x) (pos_float_val y)))%R.
+Lemma target x y :
+  let x' := B2R 24 128 x in
+  let y' := B2R 24 128 y in
+  (y' <= 2 * sqrt x')%R ->
+  (1 <= x' < 4)%R ->
+  (round radix2 f32_exp (round_mode mode_DN) (sqrt x') <= y')%R ->
+  (y' <= body_exp_R x' y')%R ->
+  (Rabs (y' - sqrt x') < ulp1)%R.
 Proof.
-Admitted.
+intros x' y' inty intx lowerbound stop.
+assert (sge1 : (1 <= sqrt x')%R).
+  rewrite <- sqrt_1; apply sqrt_le_1_alt; lra.
+assert (yge1 : (1 <= y')%R).
+  apply Rle_trans with (2 := lowerbound).
+  rewrite <- (round1 mode_DN).
+  apply round_le; auto; try typeclasses eauto.
+  now apply FLT_exp_valid.  (* TODO : make type classes work for this. *)
+assert (sle2 : (sqrt x' < 2)%R).
+  rewrite <- (sqrt_pow2 2); try lra.
+  apply sqrt_lt_1_alt; lra.
+assert (ulpbnd : ulp radix2 f32_exp (sqrt x') = ulp1).
+  apply ulp_1_2; lra.
+set (ulps := ulp radix2 f32_exp (sqrt x')).
+destruct (Rle_lt_dec (sqrt x' + 1) y').
+  enough (body_exp_R x' y' < y')%R by lra.
+  assert (x' / y' < sqrt x')%R.
+    apply Rmult_lt_reg_r with y';[lra | ].
+    unfold Rdiv; rewrite Rmult_assoc, Rinv_l, Rmult_1_r by lra.
+    rewrite <- (sqrt_sqrt x') at 1 by lra.
+    apply Rmult_lt_compat_l; lra.
+  assert (round' (x' / y') <= sqrt x' + ulps)%R.
+    assert (tm1 :=  @error_le_ulp radix2 f32_exp
+        (@FLT_exp_valid (3 - 128 - 24) 24 eq_refl)
+        (round_mode mode_NE) (valid_rnd_round_mode _)
+        (x' / y')).
+    apply Rabs_le_inv in tm1.
+    apply Rle_trans with (x' / y' + ulp radix2 f32_exp (x' / y'))%R.
+    
+    
+Lemma body_exp_decrease2 x y :
+  let x' := B2R 24 128 (pos_float_val x) in
+  let y' := B2R 24 128 (pos_float_val y) in
+  (1 < x' < B2R 24 128 predf32max)%R ->
+  (y' <= 2 * sqrt x')%R ->
+  (round' (sqrt x') <=
+      B2R 24 128 (body_exp (pos_float_val x) (pos_float_val y)) < 2 / 3 * y')%R.
+
 
 Lemma fsqrt_loop_terminates : forall x y,
   Float32.cmp Clt (body_exp (pos_float_val x) (pos_float_val y)) 
