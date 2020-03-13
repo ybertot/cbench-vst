@@ -334,6 +334,21 @@ destruct (Z_le_gt_dec (3 - 128 - 24) (ln_beta radix2 x - 24)).
 rewrite Z.max_r; lia.
 Qed.
 
+Lemma canonic_exp_32 e r :
+  -126 < e ->
+  (bpow radix2 (e - 1) <= r < bpow radix2 e)%R ->
+  canonic_exp radix2 f32_exp r = e - 24.
+Proof.
+intros ce inte.
+unfold canonic_exp, f32_exp, FLT_exp.
+assert (r0 : (0 <= r)%R).
+  assert (tmp := bpow_ge_0 radix2 (e - 1)); lra.
+assert (vln : ln_beta_val radix2 _ (ln_beta radix2 r) = e).
+  now  apply ln_beta_unique; rewrite Rabs_pos_eq.
+rewrite vln.
+apply Z.max_l; lia.
+Qed.
+
 Lemma mantissa_bpow x e : 
   x <> 0%R ->
   -149 < canonic_exp radix2 f32_exp x ->
@@ -482,18 +497,21 @@ unfold bexp in vexp; rewrite vsum in vexp; unfold divxy' in vexp.
 rewrite vdivxy in vexp; exact vexp.
 Qed.
 
+Notation cexp' := (canonic_exp radix2 f32_exp).
+
 Lemma body_exp_value_scale x y e:
   let x' := B2R 24 128 x in
   let y' := B2R 24 128 y in
   (1 < x' <= 4)%R ->
   (sqrt x' <= y' <= 2 * sqrt x')%R ->
+  -125 < e ->
   -149 < (2 * e) + canonic_exp radix2 f32_exp x' ->
   (round' (round' (y' + round' (x' / y')) / 2) * bpow radix2 e =
   round' (round' (y' * bpow radix2 e +
               round' ((x' * bpow radix2 (2 * e)) /
                       (y' * bpow radix2 e))) / 2))%R.
 Proof.
-intros x' y' intx inty inte.
+intros x' y' intx inty elb inte.
 assert (1 < sqrt x')%R.
   rewrite <- sqrt_1.
   apply sqrt_lt_1_alt; lra.
@@ -559,7 +577,38 @@ assert (sumle6: (y' + round' (x' / y') <= 6)%R) by lra.
 assert (rsumle6 : (round' (y' + round' (x' / y')) <= 6)%R).
   now rewrite <- r6; apply round_le'.
 assert (exple4: (round' (y' + round' (x' / y')) / 2 <= 4)%R) by lra.
-rewrite round_mult_bpow
+assert (-24 <= cexp' (x' / y') <= -22).
+  destruct (Rle_lt_dec 1 (x' / y')).
+    destruct (Rle_lt_dec 2 (x' / y')).
+      rewrite (canonic_exp_32 2);[lia | lia| simpl bpow; split; lra].
+    rewrite (canonic_exp_32 1);[lia | lia| simpl bpow; split; lra].
+  rewrite (canonic_exp_32 0);[lia | lia| simpl bpow; split; lra].
+rewrite round_mult_bpow; try lra; try lia.
+rewrite <- Rmult_plus_distr_r.
+assert (-23 <= (cexp' (y' + round' (x' / y'))) <= -21).
+  destruct (Rle_lt_dec 2 (y' + round' (x' / y'))).
+    destruct (Rle_lt_dec 4 (y' + round' (x' / y'))).
+      rewrite (canonic_exp_32 3);[lia | lia| simpl bpow; split; lra].
+    rewrite (canonic_exp_32 2);[lia | lia| simpl bpow; split; lra].
+  rewrite (canonic_exp_32 1);[lia | lia| simpl bpow; split; lra].
+rewrite sqrt_pow2 by lra.
+rewrite round_mult_bpow; try lra; try lia.
+assert (tech : forall a b, ((a * b) / 2 = (a / 2) * b)%R)
+   by (intros; field; lra).
+rewrite tech; clear tech.
+assert (-24 <= (cexp' (round' (y' + round' (x' / y')) / 2)) <= -22).
+  destruct (Rle_lt_dec 1 (round' (y' + round' (x' / y')) / 2)).
+    destruct (Rle_lt_dec 2 (round' (y' + round' (x' / y')) / 2)).
+      rewrite (canonic_exp_32 2);[lia | lia| simpl bpow; split; lra].
+    rewrite (canonic_exp_32 1);[lia | lia| simpl bpow; split; lra].
+  rewrite (canonic_exp_32 0);[lia | lia| simpl bpow; split; lra].
+rewrite round_mult_bpow; try lra; try lia.
+Qed.
+
+Lemma canonic_exp_32 e r :
+  -150 < e ->
+  bpow radix2 (e - 1) <= r < bpow radix2 e ->
+  canonic_exp radix2 f32_exp r = e - 24.
 assert (canonic_exp radix2 f32_exp x' = -23 \/
         canonic_exp radix2 f32_exp x' = -22 \/
         canonic_exp radix2 f32_exp x' = -21).
