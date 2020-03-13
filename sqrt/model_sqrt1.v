@@ -745,13 +745,13 @@ Definition body_exp_R x y :=
 Lemma inv_add_error x : (1 + x <> 0)%R -> (/ (1 + x) = 1 - x + x ^ 2 /(1 + x))%R.
 Proof. now intros; field.  Qed.
 
-Lemma target x y :
+Lemma target_above_s x y :
   let x' := B2R 24 128 x in
   let y' := B2R 24 128 y in
   (y' <= x')%R ->
   (y' <= 2 * sqrt x')%R ->
   (1 <= x' < 4)%R ->
-  (round radix2 f32_exp (round_mode mode_DN) (sqrt x') <= y')%R ->
+  (sqrt x' <= y')%R ->
   (y' <= body_exp_R x' y')%R ->
   (Rabs (body_exp_R x' y' - sqrt x') < ulp1)%R.
 Proof.
@@ -759,10 +759,7 @@ intros x' y' yx inty intx lowerbound stop.
 assert (sge1 : (1 <= sqrt x')%R).
   rewrite <- sqrt_1; apply sqrt_le_1_alt; lra.
 assert (yge1 : (1 <= y')%R).
-  apply Rle_trans with (2 := lowerbound).
-  rewrite <- (round1 mode_DN).
-  apply round_le; auto; try typeclasses eauto.
-  now apply FLT_exp_valid.  (* TODO : make type classes work for this. *)
+  lra.
 assert (sle2 : (sqrt x' < 2)%R).
   rewrite <- (sqrt_pow2 2); try lra.
   apply sqrt_lt_1_alt; lra.
@@ -781,7 +778,7 @@ assert (yu : (sqrt x' - ulps <= y')%R).
 assert (rh : (round' (/2) = /2)%R). (* TODO remove duplication *)
   apply round_generic; try typeclasses eauto.
   replace (/2)%R with (bpow radix2 (-1)) by (compute; lra).
-  apply generic_format_bpow'.
+  apply generic_format_bpow'. (* TODO make type classes work for Valid *)
     apply FLT_exp_valid; reflexivity.
   apply Z.lt_le_incl; reflexivity.
 assert (tm1 :=  @error_le_ulp radix2 f32_exp
@@ -834,8 +831,8 @@ destruct (Rle_lt_dec (sqrt x' + /4) y').
       rewrite <- round'1; apply round_le', Rmult_le_reg_r with y';[lra |].
     unfold Rdiv; rewrite Rmult_assoc, Rinv_l, Rmult_1_r; lra.
     lra.
-  assert (round' (y' + round' (x' / y')) / 2 <
-                 (y' + sqrt x') / 2 + 3 * ulps)%R by lra.
+  assert (rsumub : (round' (y' + round' (x' / y')) / 2 <
+                 (y' + sqrt x') / 2 + 3 * ulps)%R) by lra.
   assert(final: (round' (round' (y' + round' (x' / y')) / 2) < 
                       (y' + sqrt x') / 2 + 7 * ulps)%R).
   assert (ulp radix2 f32_exp (round' (y' + round' (x' / y')) / 2) <=
@@ -843,8 +840,9 @@ destruct (Rle_lt_dec (sqrt x' + /4) y').
     rewrite ulp_neq_0; cycle 1. (* TODO : here lra loops. *)
       clear - ulpsum tm2 rdivge1 yge1 u4; lra.
     destruct (Rle_lt_dec 2 (round' (y' + round' (x' / y')) / 2)).
-      rewrite (canonic_exp_32 2); try lia; try (simpl bpow; lra).
-      rewrite ulps1; unfold ulp1; simpl bpow; clear; lra.
+      rewrite (canonic_exp_32 2); try lia.
+        rewrite ulps1; unfold ulp1; simpl bpow; clear; lra.
+      simpl bpow; split;[| clear -rsumub yx intx u4 ulps1 sle2]; lra.
     destruct (Rle_lt_dec 1 (round' (y' + round' (x' / y')) / 2)).
       rewrite (canonic_exp_32 1); try lia. (* TODO here lra loops. *)
         rewrite ulps1; unfold ulp1; simpl bpow; lra.
@@ -861,6 +859,8 @@ set (e' := (e / sqrt x')%R).
 assert (expand : (x' / y' = sqrt x' - e + e ^ 2 / y')%R).
   unfold e', e; rewrite <- (sqrt_sqrt x') at 1 by lra.
   field; lra.
+assert (expand2 : (x' / y' = sqrt x' - (e * (1 - e / y')))%R).
+  rewrite expand; field; lra.
 assert (e4 : (-/4 < e < / 4)%R) by (unfold e; lra).
 assert (ebnd : (0 <= e ^ 2 / y' <= / 16)%R).
   split.
@@ -875,18 +875,51 @@ assert (ebnd : (0 <= e ^ 2 / y' <= / 16)%R).
     apply Rabs_le; lra.
   apply Rmult_le_reg_r with y';[lra |].
   rewrite Rinv_l; lra.
-assert ( ulps <= round' (x' / y') - 
-                       (sqrt x' - e) < e ^ 2 / y' + ulps)%R.
-  destruct (Rle_lt_dec (sqrt x') y').
-    assert (x' / y' < sqrt x')%R.
-
-
+assert (rdiv : (-ulps <= round' (x' / y') - 
+                       (sqrt x' - e) <= e ^ 2 / y' + ulps)%R).
+  assert (0 <= e)%R by (unfold e; lra).
+  assert (divles : (x' / y' <= sqrt x')%R).
+    apply Rmult_le_reg_r with y';[lra | ].
+    unfold Rdiv; rewrite Rmult_assoc, Rinv_l, Rmult_1_r by lra.
+    rewrite <- (sqrt_sqrt x') at 1 by lra.
+    apply Rmult_le_compat_l; lra.
+  assert (0 <= ulp radix2 f32_exp (x' / y') <= ulps)%R.
+    split.
+      now apply ulp_ge_0.
+    apply ulp_le.
+        now apply FLT_exp_valid.
+      now apply FLT_exp_monotone.
+    rewrite !Rabs_pos_eq; try lra.
   move tm1 after ebnd.
-  assert (ulp radix2 f32_exp (x' / y') <= ulps)%R.
-    rewrite ulp_neq_0;[ | lra].
-    rewrite (canonic_exp_32 0); try lia.
-
-Qed.ulp
+  split.
+    destruct tm1 as [tm1 _].
+    rewrite expand in tm1 at 3.
+    apply Rplus_le_reg_r with (- (e ^ 2 / y'))%R.
+    replace (round' (x' / y') - (sqrt x' - e) + - (e ^ 2 / y'))%R with
+        (round' (x' / y') - (sqrt x' - e + e ^ 2 / y'))%R by ring.
+    apply Rle_trans with (2 := tm1).
+    lra.
+  destruct tm1 as [_ tm1].
+  rewrite expand in tm1 at 2.
+  apply Rplus_le_reg_r with (- (e ^ 2 / y'))%R.
+  replace (round' (x' / y') - (sqrt x' - e) + - (e ^ 2 / y'))%R with
+        (round' (x' / y') - (sqrt x' - e + e ^ 2 / y'))%R by ring.
+  apply Rle_trans with (1 := tm1).
+  ring_simplify; tauto.
+assert (approxsum : (-ulps <= (y' + round' (x' / y')) - (2 * sqrt x') <=
+                              e ^ 2 / y' + ulps)%R).
+  unfold e at 1 2 in rdiv; clear -rdiv; lra.
+assert (rsum : (- ulps <= 
+split.
+    destruct tm1 as [tm1 _].
+    rewrite expand in tm1 at 3.
+    apply Rplus_le_reg_r with (- (e ^ 2 / y'))%R.
+    replace (round' (x' / y') - (sqrt x' - e) + - (e ^ 2 / y'))%R with
+          (round' (x' / y') - (sqrt x' - e + e ^ 2 / y'))%R by ring.
+    apply Rle_trans with (2 := tm1).
+    lra.
+  assert (e < 0)%R by (unfold e; lra).
+Qed.
 Lemma body_exp_decrease2 x y :
   let x' := B2R 24 128 (pos_float_val x) in
   let y' := B2R 24 128 (pos_float_val y) in
