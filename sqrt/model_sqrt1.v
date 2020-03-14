@@ -752,6 +752,19 @@ Qed.
 Lemma inv_add_error x : (1 + x <> 0)%R -> (/ (1 + x) = 1 - x + x ^ 2 /(1 + x))%R.
 Proof. now intros; field.  Qed.
 
+Lemma target_below_s x y :
+  let x' := B2R 24 128 x in
+  let y' := B2R 24 128 y in
+  (sqrt x' - 8 * ulp1 <= y' <= sqrt x')%R ->
+  (1 <= x' < 4)%R ->
+  (y' <= body_exp_R x' y')%R ->
+  (Rabs (body_exp_R x' y' - sqrt x') <= 6 * ulp1)%R.
+Proof.
+intros x' y' inty' intx' stop.
+assert (st3 : (Rabs (body_exp_R x' y' - ((y' + (x' / y')) / 2)) <= 8 * ulp1)%R).
+  admit.
+Qed.
+
 Lemma target_above_s x y :
   let x' := B2R 24 128 x in
   let y' := B2R 24 128 y in
