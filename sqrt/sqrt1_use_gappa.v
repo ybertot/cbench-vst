@@ -5,12 +5,13 @@ Import Raux FLT Generic_fmt Gappa_definitions.
 Notation round' x :=
    (Generic_fmt.round Gappa_definitions.radix2 (FLT.FLT_exp (-149) 24) rndNE x).
 
-Lemma titi (y : R) : 
-  (1 <= y <= 2)%R ->
-  (Rabs (round' (round' (y + round' ((y ^ 2) / y)) / Float1 2) -
-          ((y + (y ^ 2) / y) / 2)) <= 3 * bpow radix2 (-23))%R.
+Lemma titi (x y : R) :
+  (1 <= x <= 4)%R ->
+  (Rabs (y - sqrt x) <=  3 * bpow radix2 (-23))%R ->
+  (Rabs (round' (round' (y + round' (x / y)) / 2) -
+          ((y + x / y) / 2)) <= 3 * bpow radix2 (-23))%R.
 Proof.
-intros ybnd; apply Rabs_le.
+intros intx ybnd; apply Rabs_le.
 generalize l1; unfold s1, s2, i1, i2, BND; cbv[ lower upper]; lazy zeta.
 replace (float2R f1) with 1%R by (compute; ring).
 replace (float2R f2) with 2%R by (compute; ring).
