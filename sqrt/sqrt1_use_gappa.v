@@ -1,21 +1,26 @@
-Require Import Reals Gappa.Gappa_library.
+Require Import Reals Gappa.Gappa_library Psatz.
 Require Import sqrt1_gappa.
 Import Raux FLT Generic_fmt Gappa_definitions.
 
 Notation round' x :=
    (Generic_fmt.round Gappa_definitions.radix2 (FLT.FLT_exp (-149) 24) rndNE x).
 
-Check l1.
-Print s1.
-Print s2.
-Print i2.
-Print f3.
-
 Lemma titi (y : R) : 
+  (1 <= y <= 2)%R ->
   (Rabs (round' (round' (y + round' ((y ^ 2) / y)) / Float1 2) -
-          (y + (y ^ 2) / y)) <= 3 * bpow radix2 (-23))%R.
+          ((y + (y ^ 2) / y) / 2)) <= 3 * bpow radix2 (-23))%R.
 Proof.
-apply Rabs_le.
-generalize l1; unfold s1, s2, i1, f1, BND; simpl.
-unfold float2R, Defs.F2R.
-Gappa_definitions 
+intros ybnd; apply Rabs_le.
+generalize l1; unfold s1, s2, i1, i2, BND; cbv[ lower upper]; lazy zeta.
+replace (float2R f1) with 1%R by (compute; ring).
+replace (float2R f2) with 2%R by (compute; ring).
+replace (float2R f3) with ((-3) * bpow radix2 (-23))%R by reflexivity.
+rewrite Ropp_mult_distr_l.
+replace (IZR (-3)) with (Ropp (IZR(3))) by ring.
+replace (float2R f4) with (3 * bpow radix2 (-23))%R by reflexivity.
+replace (IPR 2) with (2%R) by reflexivity. 
+replace (Float1 2) with (2%R) by reflexivity.
+intros l1'.
+replace (y ^ 2)%R with (y * y)%R by ring.
+assert (tmp:= l1' y); lra.
+Qed.

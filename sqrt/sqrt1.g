@@ -1,8 +1,8 @@
 @rnd = float< ieee_32, ne >;
-{a in [1,4] /\ b in [0,1] ->
- ( rnd (rnd ( (rnd (a + 1 / 3 * b)) + a /  (rnd (a + 1 / 3 * b))) / 2)
+{b in [1, 2] ->
+ ( rnd (rnd ( b + rnd ((b * b) / b)) / 2)
    -
-   (((rnd (a + 1 / 3 * b)) + a / (rnd (a + 1 / 3 * b))) / 2)
+   ( (b + ((b * b) / b)) / 2)
 
-    ) in ?}
+    ) in [-3b-23,3b-23]}
 
