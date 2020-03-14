@@ -7,7 +7,7 @@ endif
 CLIGHTGEN= $(COMPCERT_LOC)/clightgen
 
 VST_DIRS= msl sepcomp veric floyd
-VSTFLAGS= -R $(VST_LOC)/compcert compcert $(foreach d, $(VST_DIRS), -Q $(VST_LOC)/$(d) VST.$(d)) -I . 
+VSTFLAGS= -R $(COMPCERT_LOC) compcert $(foreach d, $(VST_DIRS), -Q $(VST_LOC)/$(d) VST.$(d)) -I . 
 
 
 target: _CoqProject verif_sqrt1.vo # verif_sqrt2.vo verif_sqrt3.vo verif_sqrt4.vo
