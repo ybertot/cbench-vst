@@ -116,6 +116,14 @@ assert (for2 : generic_format radix2 (FLT_exp (3 - 128 - 24) 24) 4).
 now apply round_generic; auto; apply valid_rnd_round_mode.
 Qed.
 
+
+Axiom close_computation_from_gappa : forall (x y : R),
+  (1 <= x <= 4)%R ->
+  (Rabs (y - sqrt x) <=  1 * bpow radix2 (-19))%R ->
+  (Rabs (round' (round' (y + round' (x / y)) / 2) -
+          ((y + x / y) / 2)) <= 3 * bpow radix2 (-24))%R.
+
+
 Lemma round_le' (x y : R) : (x <= y)%R -> (round' x <= round' y)%R.
 Proof.
 intros xley.
@@ -438,15 +446,18 @@ split; unfold cexp, f32_exp; destruct (mag radix2 x) as [v vprop];
 intros v1; rewrite v1, Z.max_l; lia.
 Qed.
 
+Definition body_exp_R x y :=
+   round' (round' (y + round' (x / y)) / 2).
+
 Lemma body_exp_value x y :
   let x' := B2R 24 128 (pos_float_val x) in
   let y' := B2R 24 128 (pos_float_val y) in
   (1 < x' < B2R 24 128 predf32max)%R ->
   (1 < y' <= x')%R ->
   B2R 24 128 (body_exp (pos_float_val x) (pos_float_val y)) =
-        round' (round' (y' + round' (x' / y')) / 2).
+  body_exp_R x' y'.
 Proof.
-lazy zeta.
+unfold body_exp_R; lazy zeta.
 destruct x as [x finx x0]; destruct y as [y finy y0]; simpl pos_float_val.
 set (x' := B2R 24 128 x); set (y':= B2R 24 128 y).
 intros intx' inty'.
@@ -735,11 +746,8 @@ assert (ulp radix2 f32_exp (round' (y' + round' (x' / y')) / 2) < y' / 128)%R.
 change (round radix2 f32_exp (round_mode mode_NE)
               ((round' (y' + round' (x' / y')) / 2))) with
            (round' ((round' (y' + round' (x' / y')) / 2))) in tm8.
-lra.
+unfold body_exp_R; lra.
 Qed.
-
-Definition body_exp_R x y :=
-   round' (round' (y + round' (x / y)) / 2).
 
 Lemma inv_add_error x : (1 + x <> 0)%R -> (/ (1 + x) = 1 - x + x ^ 2 /(1 + x))%R.
 Proof. now intros; field.  Qed.
