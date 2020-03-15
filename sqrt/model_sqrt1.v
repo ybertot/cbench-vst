@@ -947,7 +947,7 @@ Axiom reduce_error_from_gappa : forall (x y : R),
          sqrt x) / (y - sqrt x)) <=
    127 * bpow radix2 (-7))%R.
 
-Lemma body_exp_decrease1 x y :
+Lemma body_exp_decrease2 x y :
   is_finite 24 128 x = true ->
   is_finite 24 128 y = true ->
   let x' := B2R 24 128 x in
@@ -1194,7 +1194,6 @@ assert (ulp radix2 f32_exp (round' (y' + round' (x' / y')) / 2) < y' / 2048)%R.
 change (round radix2 f32_exp (round_mode mode_NE)
               ((round' (y' + round' (x' / y')) / 2))) with
            (round' ((round' (y' + round' (x' / y')) / 2))) in tm8.
-unfold body_exp_R; lra.
 Admitted.
 
 Axiom close_computation_from_gappa : forall (x y : R),
@@ -1226,8 +1225,7 @@ assert (maxgt4: (4 < B2R 24 128 predf32max)%R).
 assert (xltmax : (1 <= x' < B2R 24 128 predf32max)%R) by lra.
 assert (y' <= sqrt x' + bpow radix2 (-19))%R.
   apply Rnot_lt_le; intros abs; apply (Rle_not_lt _ _ yb).
-  
-fold x' y' in tmp.
+Admitted.
 
 
 Lemma inv_add_error x : (1 + x <> 0)%R -> (/ (1 + x) = 1 - x + x ^ 2 /(1 + x))%R.
@@ -1246,7 +1244,7 @@ assert (st3 : (Rabs (body_exp_R x' y' - ((y' + (x' / y')) / 2)) <= 8 * ulp1)%R).
   admit.
 Admitted.
 
-Lemma target_above_s x y :
+Lemma target_above_s' x y :
   let x' := B2R 24 128 x in
   let y' := B2R 24 128 y in
   (y' <= x')%R ->
@@ -1421,15 +1419,6 @@ assert (math : (0 <= (y' + x' / y') / 2 - sqrt x' < ulps)%R).
 apply Rabs_le.
 lra.
 Qed.
-
-Lemma body_exp_decrease2 x y :
-  let x' := B2R 24 128 x in
-  let y' := B2R 24 128 y in
-  (1 < x' < B2R 24 128 predf32max)%R ->
-  (y' <= 2 * sqrt x')%R ->
-  (round' (sqrt x') <=
-      B2R 24 128 (body_exp x y) < 2 / 3 * y')%R.
-
 
 Lemma fsqrt_loop_terminates : forall x y,
   Float32.cmp Clt (body_exp x y)
