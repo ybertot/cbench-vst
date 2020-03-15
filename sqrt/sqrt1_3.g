@@ -1,8 +1,8 @@
 @rnd = float< ieee_32, ne >;
-{b in [1, 2] /\ e in [0.9, 2] ->
+{b in [1, 2] /\ e in [1b-8, 1] ->
  ( rnd (rnd ( (b + e * b) + rnd ((b * b) / (b + e * b))) / 2)
    -
     b
 
-    )/(e * b) in [-0.5,0.5]}
+    )/(e * b) in [-127b-7,127b-7]}
 
