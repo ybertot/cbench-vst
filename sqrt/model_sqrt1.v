@@ -791,11 +791,11 @@ fold divxy sum in vsum, finsum, signsum, tm4.
 assert (explt : Rlt_bool (Rabs (round' (B2R 24 128 sum /
                B2R 24 128 (Float32.of_int (Integers.Int.repr 2)))))
               (bpow radix2 128) = true).
-apply Rlt_bool_true.
-replace (B2R 24 128 (Float32.of_int (Integers.Int.repr 2))) with 2%R
+  apply Rlt_bool_true.
+  replace (B2R 24 128 (Float32.of_int (Integers.Int.repr 2))) with 2%R
        by (now compute; lra).
-rewrite vsum; unfold divxy'; rewrite vdivxy.
-rewrite Rabs_pos_eq;[ | lra].
+   rewrite vsum; unfold divxy'; rewrite vdivxy.
+  rewrite Rabs_pos_eq;[ | lra].
   now assert (tmp5:= conj boundpredf32max boundf32max); lra.
 fold f32_exp in tm4.
 rewrite explt in tm4; destruct tm4 as [vexp [finexp signexp]].
@@ -1310,24 +1310,129 @@ Proof.
 destruct x; auto; intros abs; case abs; reflexivity.
 Qed.
 
-Definition Float32_two :=
-  B754_finite 24 128 false (2 ^ 23) (-22) eq_refl.
-
-Definition Float32_four :=
-  B754_finite 24 128 false (2 ^ 23) (-21) eq_refl.
+Definition Float32_two : float32 :=
+  binary_normalize 24 128 eq_refl eq_refl mode_NE 2 0 false.
 
 Lemma Float32_two_val : B2R 24 128 Float32_two = 2%R.
 Proof. compute; lra. Qed.
 
+Definition Float32_four : float32 :=
+  binary_normalize 24 128 eq_refl eq_refl mode_NE 4 0 false.
+
 Lemma Float32_four_val : B2R 24 128 Float32_four = 4%R.
 Proof. compute; lra. Qed.
 
-Lemma mul_small x : (/2 <= B2R 24 128 x < 1)%R ->
+Lemma Float32_two_finite : is_finite 24 128 Float32_two = true.
+Proof.
+assert (tmp := binary_normalize_correct 24 128 eq_refl eq_refl mode_NE 2 0 false).
+match goal with tmp : context[Rlt_bool ?v _] |- _ => assert (v2 : v = 2%R) end.
+  set (vf := F2R _).
+  replace vf with 2%R by (compute; ring).
+  assert (vfq : vf = 2%R) by (compute; ring).
+  assert (Rabs 2 = 2%R) by (rewrite Rabs_pos_eq; lra).
+  assert (Valid_rnd (round_mode mode_NE)) by apply valid_rnd_round_mode.
+  rewrite round_generic; auto.
+  replace 2%R with (bpow radix2 1) by (compute; lra).
+  now apply generic_format_bpow; compute; discriminate.
+rewrite v2 in tmp.
+assert (2 < bpow radix2 128)%R by (compute; lra).
+rewrite Rlt_bool_true in tmp; auto.
+Qed.
+
+Lemma Float32_four_finite : is_finite 24 128 Float32_four = true.
+Proof.
+assert (tmp := binary_normalize_correct 24 128 eq_refl eq_refl mode_NE 4 0 false).
+match goal with tmp : context[Rlt_bool ?v _] |- _ => assert (v4 : v = 4%R) end.
+  set (vf := F2R _).
+  replace vf with 4%R by (compute; ring).
+  assert (vfq : vf = 4%R) by (compute; ring).
+  assert (Rabs 4 = 4%R) by (rewrite Rabs_pos_eq; lra).
+  assert (Valid_rnd (round_mode mode_NE)) by apply valid_rnd_round_mode.
+  rewrite round_generic; auto.
+  replace 4%R with (bpow radix2 2) by (compute; lra).
+  now apply generic_format_bpow; compute; discriminate.
+rewrite v4 in tmp.
+assert (4 < bpow radix2 128)%R by (compute; lra).
+rewrite Rlt_bool_true in tmp; auto.
+Qed.
+
+Lemma mul_small_inbounds x :
+  is_finite 24 128 x = true ->
+  (/2 <= B2R 24 128 x < 1)%R ->
+  Rlt_bool (Rabs (round' (4 * B2R 24 128 x))) (bpow radix2 128) = true.
+Proof.
+intros finx intx.
+assert (vbnd : (2 <= 4 * B2R 24 128 x < 4)%R) by lra.
+assert (tm1 :=  @error_le_ulp radix2 f32_exp
+      (@FLT_exp_valid (3 - 128 - 24) 24 eq_refl)
+      (round_mode mode_NE) (valid_rnd_round_mode _) (4 * B2R 24 128 x)).
+assert (prodn0 : (4 * B2R 24 128 x <> 0)%R) by lra.
+assert (0 < ulp radix2 f32_exp (4 * B2R 24 128 x) < / 2)%R.
+  rewrite ulp_neq_0 by auto.
+  unfold cexp.  
+  destruct (mag radix2 (4 * B2R 24 128 x)) as [vm aux].
+  assert (pv := aux prodn0); simpl; clear aux.
+  assert (0 < vm).
+    apply (lt_bpow radix2); apply Rlt_trans with (2 := proj2 pv).
+    rewrite Rabs_pos_eq by lra.
+    apply Rlt_le_trans with (2 := proj1 vbnd); compute; lra.
+  assert (vm - 1 < 2).
+    apply (lt_bpow radix2), Rle_lt_trans with (1:= proj1 pv).
+    rewrite Rabs_pos_eq by lra.    
+    apply Rlt_le_trans with (1 := proj2 vbnd); compute; lra.
+  split;[apply bpow_gt_0 | ]. 
+  apply Rlt_trans with (bpow radix2 (-2));[ | compute; lra].
+  apply bpow_lt; unfold f32_exp, FLT_exp.
+  rewrite Z.max_l; lia.
+assert (nooverflow : (Rabs (round' (4 * B2R 24 128 x)) < bpow radix2 128)%R).
+  apply Rabs_le_inv in tm1.
+  rewrite Rabs_pos_eq by lra.
+  apply Rlt_trans with 5%R;[ | compute]; lra.
+now apply Rlt_bool_true.
+Qed.
+
+Lemma mul_small_finite x : 
+  is_finite 24 128 x = true ->
+  (/2 <= B2R 24 128 x < 1)%R ->
   is_finite 24 128 (Float32.mul Float32_four x) = true.
 Proof.
-intros intx.
+intros finx intx.
 assert (tmp := Bmult_correct 24 128 eq_refl eq_refl Float32.binop_nan mode_NE
                Float32_four x).
+fold f32_exp in tmp; rewrite Float32_four_val in tmp. 
+rewrite mul_small_inbounds in tmp; auto; destruct tmp as [val [finval _]].
+(* TODO: is this too hard. *)
+match goal with finval : ?v = (_ && _)%bool |- _ => transitivity v end.
+  reflexivity.
+now rewrite finval, finx, Float32_four_finite.
+Qed.
+
+Lemma mul_small_val x : 
+  is_finite 24 128 x = true ->
+  (/2 <= B2R 24 128 x < 1)%R ->
+  B2R 24 128 (Float32.mul Float32_four x) = (4 * B2R 24 128 x)%R.
+Proof.
+intros finx intx.
+assert (tmp := Bmult_correct 24 128 eq_refl eq_refl Float32.binop_nan mode_NE
+               Float32_four x).
+fold f32_exp in tmp; rewrite Float32_four_val in tmp. 
+rewrite mul_small_inbounds in tmp; auto; destruct tmp as [val [finval _]].
+(* TODO: is this too hard. *)
+match goal with val : ?v = round' _ |- _ => transitivity v end.
+  reflexivity.
+rewrite val, round_generic; auto.
+  now apply valid_rnd_round_mode.
+apply generic_format_FLT.
+apply (FLT_spec radix2 (-149) 24 _ (@Float radix2 (Fnum 0x) (Fexp x + 2))).
+apply generic_format_canonical.
+Qed.
+
+
+match goal with id : if ?v then _ else _ |- _ => 
+  assert (v = true)
+end.
+assert (tm1 := mul_small_inbounds x finx intx).
+rewrite (mul_small_inbounds x finx intx).
 rewrite Float32_four_val in tmp.
 fold f32_exp in tmp.
 assert (vbnd : (2 <= 4 * B2R 24 128 x < 4)%R) by lra.
@@ -1358,9 +1463,11 @@ assert (nooverflow : (Rabs (round' (4 * B2R 24 128 x)) < bpow radix2 128)%R).
   apply Rlt_trans with 5%R;[ | compute]; lra.
 apply Rlt_bool_true in nooverflow; rewrite nooverflow in tmp.
 destruct tmp as [vmul [finval _]].
-unfold Float32.mul; rewrite finval.
-rewrite
-cexp_le_bpow.
+(* TODO: is this too hard. *)
+match goal with finval : ?v = (_ && _)%bool |- _ => transitivity v end.
+  reflexivity.
+now rewrite finval, finx, Float32_four_finite.
+Qed.
 
 Lemma above1 x y :
   is_finite 24 128 x = true ->
