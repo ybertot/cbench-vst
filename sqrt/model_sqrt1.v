@@ -1247,14 +1247,47 @@ rewrite Digits.Zpos_digits2_pos, Pos2Z.inj_pow_pos, Z.pow_pos_fold.
 now rewrite Digits.Zdigits_Zpower, Pos2Z.inj_succ, Z.add_1_r.
 Qed.
     
+Lemma float_pow_proof (x : Z) :
+  Binary.bounded 24 128 (2 ^ 23) (Z.max (Z.min x 104) (-149)) = true.
+Proof.
+destruct (Z_lt_le_dec x (-149)) as [xle149 | xgt149];
+    (rewrite Z.max_l;[ | lia]) || (rewrite Z.max_r;[ | lia]).
+  reflexivity.
+destruct (Z_le_dec 104 x) as [xge104 | xlt104];
+    (rewrite Z.min_l;[ | lia]) || (rewrite Z.min_r;[ | lia]).
+  reflexivity.
+unfold Binary.bounded, canonical_mantissa, FLT_exp.
+replace (Z.pos (Digits.digits2_pos (2 ^ 23))) with 24 by reflexivity.
+rewrite Z.max_l by lia.
+rewrite Bool.andb_true_iff; split.
+  apply Zeq_bool_true; ring.
+apply Zle_bool_true; lia.
+Qed.
+
+(* This should be used to replace float_four and float_two *)
+Definition float_pow (x : Z) : float32 :=
+  B754_finite 24 128 false
+    (2 ^ 23) (Z.max (Z.min (x - 23) 104) (-149)) (float_pow_proof (x - 23)).
+
+Lemma float_pow_val (x : Z) :
+  -127 < x < 128 ->
+   B2R 24 128 (float_pow x) = bpow radix2 x.
+Proof.
+intros intx; unfold float_pow; simpl.
+rewrite Z.min_l by lia.
+rewrite Z.max_l by lia.
+unfold F2R; simpl. rewrite Pos2Z.inj_pow, (IZR_Zpower radix2) by lia.
+rewrite <- bpow_plus; apply f_equal; ring.
+Qed.
+
 Definition float_one : float32 := Bone 24 128 eq_refl eq_refl.
 
 Lemma float_mag_proof (m : positive) (e : Z)
   (p : Binary.bounded 24 128 m e = true) :
-  Binary.bounded 24 128 
+  Binary.bounded 24 128
     (if (m =? 1)%positive then
        m
-    else 
+    else
        (2 ^ Pos.pred (Digits.digits2_pos m))) e = true.
 Proof.
 unfold Binary.bounded in p |- *.
@@ -1274,11 +1307,11 @@ Definition float_mag (x : float32) : float32 :=
    | B754_zero s => B754_zero 24 128 s
    | B754_infinity sign => B754_infinity 24 128 sign
    | B754_nan a b c => B754_nan 24 128 a b c
-   | B754_finite sign m e p => 
-     B754_finite 24 128 false 
+   | B754_finite sign m e p =>
+     B754_finite 24 128 false
       (if (m =? 1)%positive then
          m
-      else 
+      else
          (2 ^ Pos.pred (Digits.digits2_pos m))) e
         (float_mag_proof m e p)
    end.
@@ -1356,7 +1389,7 @@ assert (4 < bpow radix2 128)%R by (compute; lra).
 rewrite Rlt_bool_true in tmp; auto.
 Qed.
 
-Lemma mul_small_inject x :
+Lemma small_inject x :
   is_finite 24 128 x = true ->
   (/2 <= B2R 24 128 x < 1)%R ->
   match x with
@@ -1435,11 +1468,40 @@ assert (-25 < e).
 lia.
 Qed.
 
-Lemma mul_small_inbounds_m x :
+Lemma mul_small_inbounds_2 x :
+  is_finite 24 128 x = true ->
+  (/2 <= B2R 24 128 x < 1)%R ->
+  Rlt_bool (Rabs (round' (2 * B2R 24 128 x))) (bpow radix2 128) = true.
+Proof.
+intros finx intx.
+assert (vbnd : (1 <= 2 * B2R 24 128 x < 2)%R) by lra.
+assert (tm1 :=  @error_le_ulp radix2 f32_exp
+      (@FLT_exp_valid (3 - 128 - 24) 24 eq_refl)
+      (round_mode mode_NE) (valid_rnd_round_mode _) (2 * B2R 24 128 x)).
+assert (prodn0 : (2 * B2R 24 128 x <> 0)%R) by lra.
+assert (0 < ulp radix2 f32_exp (2 * B2R 24 128 x) < / 4)%R.
+  rewrite ulp_neq_0 by auto.
+  unfold cexp.
+  assert (vm : mag_val radix2 _ (mag radix2 (2 * B2R 24 128 x)) = 1).
+    apply mag_unique.
+    rewrite Rabs_pos_eq by lra.
+    replace (bpow radix2 (1 - 1)) with 1%R by (compute; lra).
+    now replace (bpow radix2 1) with 2%R by (compute; lra).
+  rewrite vm; compute; lra.
+assert (nooverflow : (Rabs (round' (2 * B2R 24 128 x)) < bpow radix2 128)%R).
+  apply Rabs_le_inv in tm1.
+  rewrite Rabs_pos_eq by lra.
+  apply Rlt_trans with 5%R;[ | compute]; lra.
+now apply Rlt_bool_true.
+Qed.
+
+Lemma mul_small_inbounds_4 x :
   is_finite 24 128 x = true ->
   (/2 <= B2R 24 128 x < 1)%R ->
   Rlt_bool (Rabs (round' (4 * B2R 24 128 x))) (bpow radix2 128) = true.
 Proof.
+(* TODO: correct this proof so that it uses mag_unique, like the previous
+  one.  Even better: make a generic proof. *)
 intros finx intx.
 assert (vbnd : (2 <= 4 * B2R 24 128 x < 4)%R) by lra.
 assert (tm1 :=  @error_le_ulp radix2 f32_exp
@@ -1475,18 +1537,47 @@ Lemma mul_small_finite x :
   (/2 <= B2R 24 128 x < 1)%R ->
   is_finite 24 128 (Float32.mul Float32_four x) = true.
 Proof.
+(* TODO: this should be superseded by bounded_finite. *)
 intros finx intx.
 assert (tmp := Bmult_correct 24 128 eq_refl eq_refl Float32.binop_nan mode_NE
                Float32_four x).
-fold f32_exp in tmp; rewrite Float32_four_val in tmp. 
-rewrite mul_small_inbounds_m in tmp; auto; destruct tmp as [val [finval _]].
+fold f32_exp in tmp; rewrite Float32_four_val in tmp.
+rewrite mul_small_inbounds_4 in tmp; auto; destruct tmp as [val [finval _]].
 (* TODO: is this too hard. *)
 match goal with finval : ?v = (_ && _)%bool |- _ => transitivity v end.
   reflexivity.
 now rewrite finval, finx, Float32_four_finite.
 Qed.
 
-Lemma mul_small_val x :
+Lemma mul_small_val2 x :
+  is_finite 24 128 x = true ->
+  (/2 <= B2R 24 128 x < 1)%R ->
+  B2R 24 128 (Float32.mul Float32_two x) = (2 * B2R 24 128 x)%R.
+Proof.
+intros finx intx.
+assert (tmp := Bmult_correct 24 128 eq_refl eq_refl Float32.binop_nan mode_NE
+               Float32_two x).
+fold f32_exp in tmp; rewrite Float32_two_val in tmp.
+rewrite mul_small_inbounds_2 in tmp; auto; destruct tmp as [val [finval _]].
+(* TODO: is this too hard. *)
+match goal with val : ?v = round' _ |- _ => transitivity v end.
+  reflexivity.
+assert (vexp  : -149 < cexp' (B2R 24 128 x)).
+  unfold cexp.
+  assert (vmeq : @mag_val radix2 _ (mag radix2 (B2R 24 128 x)) = 0).
+    assert (xn0 : (B2R 24 128 x <> 0)%R) by lra.
+    apply mag_unique.
+    replace (bpow radix2 (0 - 1)) with (/ 2)%R by (compute; lra).
+    replace (bpow radix2 0) with 1%R by (compute; lra).
+    now rewrite Rabs_pos_eq by lra.
+  now rewrite vmeq; compute.
+rewrite val.
+replace 2%R with (bpow radix2 1) by (compute; lra).
+rewrite Rmult_comm.
+rewrite round_mult_bpow, round_B2R';[easy | lra | lia| lia].
+Qed.
+
+Lemma mul_small_val4 x :
   is_finite 24 128 x = true ->
   (/2 <= B2R 24 128 x < 1)%R ->
   B2R 24 128 (Float32.mul Float32_four x) = (4 * B2R 24 128 x)%R.
@@ -1494,8 +1585,8 @@ Proof.
 intros finx intx.
 assert (tmp := Bmult_correct 24 128 eq_refl eq_refl Float32.binop_nan mode_NE
                Float32_four x).
-fold f32_exp in tmp; rewrite Float32_four_val in tmp. 
-rewrite mul_small_inbounds_m in tmp; auto; destruct tmp as [val [finval _]].
+fold f32_exp in tmp; rewrite Float32_four_val in tmp.
+rewrite mul_small_inbounds_4 in tmp; auto; destruct tmp as [val [finval _]].
 (* TODO: is this too hard. *)
 match goal with val : ?v = round' _ |- _ => transitivity v end.
   reflexivity.
@@ -1514,6 +1605,14 @@ rewrite Rmult_comm.
 rewrite round_mult_bpow, round_B2R';[easy | lra | lia| lia].
 Qed.
 
+Lemma bounded_finite x :
+   (bpow radix2 (-149) <= B2R 24 128 x)%R ->
+   is_finite 24 128 x = true.
+Proof.
+assert (t1 := bpow_gt_0 radix2 (-149)).
+destruct x as [ s | s | | s m e p]; simpl B2R; auto; try lra.
+Qed.
+
 Lemma above1 x y :
   is_finite 24 128 x = true ->
   is_finite 24 128 y = true ->
@@ -1522,7 +1621,7 @@ Lemma above1 x y :
   (1 <= x' < B2R 24 128 predf32max)%R ->
   (sqrt x' - 16 * ulp radix2 f32_exp (sqrt x') <= y' <= x')%R ->
   (y' <= body_exp_R x' y')%R ->
-  (Rabs (body_exp_R x' y' - sqrt x') <= 
+  (Rabs (body_exp_R x' y' - sqrt x') <=
      6 * ulp radix2 f32_exp (sqrt x'))%R.
 Proof.
 intros finx finy x' y' intx inty stop.
@@ -1546,13 +1645,51 @@ set (xe := snd (Bfrexp 24 128 eq_refl (Z.lt_le_incl 3 128 eq_refl) x)).
 fold xe in cnd2, cnd3.
 fold x' in cnd2, cnd3.
 set (xe2 := (xe / 2)).
-assert (exists e' x4, (x' = 4 * B2R 24 128 x4 * bpow radix2 (2 * e') /\
-   1 <= B2R 24 128 x4 < 4)%R ). 
+assert (0 < xm')%R.
+  apply Rmult_lt_reg_r with (bpow radix2 xe);[apply bpow_gt_0 | lra].
+assert (scales : exists e' x4, (x' = B2R 24 128 x4 * bpow radix2 (2 * e') /\
+   1 <= B2R 24 128 x4 < 4)%R /\ -126 < e' < 127).
   assert (cases : xe mod 2 = 0 \/ xe mod 2 = 1).
     assert (tmp := Z.mod_pos_bound xe 2 eq_refl); lia.
   destruct cases as [even_e | odd_e].
-    exists (xe2 - 1), (Float32.mul xm Float32_four).
+    exists (xe2 - 1), (Float32.mul Float32_four xm).
+    rewrite Rabs_pos_eq in cnd1 by lra.
+    rewrite mul_small_val4; cycle 1.
+        apply bounded_finite; fold xm'.
+        apply Rle_trans with (2 := proj1 cnd1); compute; lra.
+      assumption.
+    split.
+      replace 4%R with (bpow radix2 2) by (compute; lra).
+      rewrite (Rmult_comm (bpow _ 2)), Rmult_assoc, <- bpow_plus.
+      replace (2 + 2 * (xe2 - 1)) with xe;[split; [assumption | ] | ].
+      rewrite (Z.div_mod _ 2), even_e by lia.
+      fold xe2; ring.
+    fold xm'; lra.
+  exists xe2, (Float32.mul Float32_two xm).
+  rewrite Rabs_pos_eq in cnd1 by lra.
+  rewrite mul_small_val2; cycle 1.
+      apply bounded_finite; fold xm'.
+      apply Rle_trans with (2 := proj1 cnd1); compute; lra.
+    assumption.
+  split.
+    replace 2%R with (bpow radix2 1) by (compute; lra).
+    rewrite (Rmult_comm (bpow _ 1)), Rmult_assoc, <- bpow_plus.
+    replace (1 + 2 * xe2) with xe;[assumption | ].
+    rewrite (Z.div_mod _ 2), odd_e by lia.
+    fold xe2; ring.
+  fold xm'; lra.
+destruct scales as [e2 [x2 [x'val intx2]]].
+set (y2 := Float32.mul y (float_pow (-e2))).
+assert (y' = B2R 24 128 y2 * bpow radix2 e2)%R.
+assert (tmp := Bmult_correct 24 128 eq_refl eq_refl Float32.binop_nan
+               mode_NE x (float_pow (-e2))).
+  fold f32_exp in tmp |- *.
+  rewrite Rlt_bool_true in tmp; cycle 1.
+    rewrite float_pow_val; cycle 1.
+    lia.
+Qed.
 SearchPattern full_float.
+
 Check F754_finite false 1 2.
    Compute FF2R radix2 (F754_finite false 1 2).
 
