@@ -633,6 +633,32 @@ destruct (Z_le_gt_dec (3 - 128 - 24) (mag radix2 x - 24)).
 rewrite Z.max_r; lia.
 Qed.
 
+Lemma Zdigits_cond_Zopp r b z :
+  Digits.Zdigits r (cond_Zopp b z) = Digits.Zdigits r z.
+Proof.
+now case b; simpl; unfold Digits.Zdigits; destruct z.
+Qed.
+
+Lemma bound_mag_float32 x :
+  is_finite_strict 24 128 x = true ->
+  (- 149 <= mag radix2 (B2R 24 128 x) <= 128).
+Proof.
+destruct x as [ | | | s m e p]; try discriminate; intros _.
+revert p; unfold Binary.bounded; simpl; rewrite Bool.andb_true_iff.
+unfold canonical_mantissa, FLT_exp; intros [p1 p2].
+apply Zle_bool_imp_le in p2.
+apply Zeq_bool_eq in p1.
+rewrite mag_F2R_Zdigits;[ | case s; simpl; lia].
+rewrite Digits.Zpos_digits2_pos in p1.
+rewrite Zdigits_cond_Zopp.
+destruct (Z_le_dec (Digits.Zdigits radix2 (Z.pos m) + e - 24) (3 - 128 - 24))
+  as [l | r].
+  rewrite Z.max_r in p1 by assumption.
+  compute in p1.
+  assert (d0 := Digits.Zdigits_ge_0 radix2 (Z.pos m)); lia.
+rewrite Z.max_l in p1; lia.
+Qed.
+
 Lemma cexp_32 e r :
   -126 < e ->
   (bpow radix2 (e - 1) <= r < bpow radix2 e)%R ->
@@ -1648,7 +1674,7 @@ set (xe2 := (xe / 2)).
 assert (0 < xm')%R.
   apply Rmult_lt_reg_r with (bpow radix2 xe);[apply bpow_gt_0 | lra].
 assert (scales : exists e' x4, (x' = B2R 24 128 x4 * bpow radix2 (2 * e') /\
-   1 <= B2R 24 128 x4 < 4)%R /\ -126 < e' < 127).
+   1 <= B2R 24 128 x4 < 4)%R /\ -80 < e' <= 64).
   assert (cases : xe mod 2 = 0 \/ xe mod 2 = 1).
     assert (tmp := Z.mod_pos_bound xe 2 eq_refl); lia.
   destruct cases as [even_e | odd_e].
@@ -1659,12 +1685,18 @@ assert (scales : exists e' x4, (x' = B2R 24 128 x4 * bpow radix2 (2 * e') /\
         apply Rle_trans with (2 := proj1 cnd1); compute; lra.
       assumption.
     split.
-      replace 4%R with (bpow radix2 2) by (compute; lra).
-      rewrite (Rmult_comm (bpow _ 2)), Rmult_assoc, <- bpow_plus.
-      replace (2 + 2 * (xe2 - 1)) with xe;[split; [assumption | ] | ].
-      rewrite (Z.div_mod _ 2), even_e by lia.
-      fold xe2; ring.
-    fold xm'; lra.
+      split.
+        replace 4%R with (bpow radix2 2) by (compute; lra).
+        rewrite (Rmult_comm (bpow _ 2)), Rmult_assoc, <- bpow_plus.
+        replace (2 + 2 * (xe2 - 1)) with xe;[assumption | ].
+        fold xm'.
+        rewrite (Z.div_mod _ 2), even_e by lia.
+        fold xe2; ring.
+      fold xm'; lra.
+    assert (tmp := bound_mag_float32 x finx').
+    fold x' in tmp; rewrite <- cnd3 in tmp.
+    assert (xe = 2 * xe2) by (rewrite (Z.div_mod _ 2); lia).
+    lia.
   exists xe2, (Float32.mul Float32_two xm).
   rewrite Rabs_pos_eq in cnd1 by lra.
   rewrite mul_small_val2; cycle 1.
@@ -1672,21 +1704,26 @@ assert (scales : exists e' x4, (x' = B2R 24 128 x4 * bpow radix2 (2 * e') /\
       apply Rle_trans with (2 := proj1 cnd1); compute; lra.
     assumption.
   split.
-    replace 2%R with (bpow radix2 1) by (compute; lra).
-    rewrite (Rmult_comm (bpow _ 1)), Rmult_assoc, <- bpow_plus.
-    replace (1 + 2 * xe2) with xe;[assumption | ].
-    rewrite (Z.div_mod _ 2), odd_e by lia.
-    fold xe2; ring.
-  fold xm'; lra.
-destruct scales as [e2 [x2 [x'val intx2]]].
+    split.
+      replace 2%R with (bpow radix2 1) by (compute; lra).
+      rewrite (Rmult_comm (bpow _ 1)), Rmult_assoc, <- bpow_plus.
+      replace (1 + 2 * xe2) with xe;[assumption | ].
+      rewrite (Z.div_mod _ 2), odd_e by lia.
+      fold xe2; ring.
+    fold xm'; lra.
+  assert (tmp := bound_mag_float32 x finx').
+  fold x' in tmp; rewrite <- cnd3 in tmp.
+  assert (xe = 2 * xe2 + 1) by (rewrite (Z.div_mod _ 2); lia).
+  lia.
+destruct scales as [e2 [x2 [[x'val intx2] eb]]].
 set (y2 := Float32.mul y (float_pow (-e2))).
-assert (y' = B2R 24 128 y2 * bpow radix2 e2)%R.
 assert (tmp := Bmult_correct 24 128 eq_refl eq_refl Float32.binop_nan
-               mode_NE x (float_pow (-e2))).
-  fold f32_exp in tmp |- *.
-  rewrite Rlt_bool_true in tmp; cycle 1.
-    rewrite float_pow_val; cycle 1.
-    lia.
+               mode_NE x (float_pow (2 * (-e2)))).
+fold f32_exp in tmp |- *.
+rewrite Rlt_bool_true in tmp; cycle 1.
+  clear tmp.    
+  rewrite float_pow_val by lia.
+  rewrite round_mult_bpow, round_B2R'.
 Qed.
 SearchPattern full_float.
 
