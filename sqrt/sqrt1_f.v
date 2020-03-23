@@ -434,93 +434,73 @@ Lemma converge_below_16 (x y : R) :
   -5 * ulp1 <= round' (round' (y + round' (x / y)) / 2) - sqrt x <= 5 * ulp1.
 Proof.
 intros intx inty.
+assert (1 <= sqrt x).
+  now rewrite <- sqrt_1; apply sqrt_le_1_alt.
 assert (0 < ulp1 < / 1024) by (unfold ulp1; simpl; lra).
-assert (tmp := from_g_proof x y intx).
-
-
-(*
-Lemma round_exp_1_4 (x y : R) :
-  1 <= x <= 4 -> 1 - 16 * ulp1 <= y <= x ->
-  Rabs (round' (round' (y + round' (x / y)) / 2) - ((y + x / y) / 2)) <
-    8 * ulp1.
-Proof.
-intros intx inty.
-assert (0 < ulp1 < / 1024) by (unfold ulp1; simpl; lra).
-assert (63 / 64 < y) by lra.
-destruct (Rle_lt_dec y 2) as [yle2 | yge2].
-  assert (1/2 <= x / y).
-    apply Rmult_le_compat; try lra.
-    apply Rinv_le_contravar; lra.
-  assert (qlt5 : x / y < 5).
-    apply Rle_lt_trans with (4  / (1 - 16 * ulp1)).
-      apply Rmult_le_compat; try lra.
-        apply Rlt_le, Rinv_0_lt_compat; lra.
-      apply Rinv_le_contravar; lra.
-    apply Rmult_lt_reg_r with (1 - 16 * ulp1);[lra | ].
-    unfold Rdiv; rewrite Rmult_assoc, Rinv_l; lra.
-  assert ( 0 <= mag_val _ _ (mag r2 (x / y)) <= 3)%Z.
-    split.
-      assert (step : bpow r2 (-1) <= Rabs (x / y)).
-        rewrite Rabs_pos_eq by lra.
-        simpl; lra.
-      apply mag_gt_bpow in step; lia.
-    apply Rlt_le, (mag_le r2) in qlt5;[ | lra].
-    enough (mag_val _ _ (mag r2 5) = 3)%Z by lia.
-    apply mag_unique; rewrite Rabs_pos_eq; simpl; lra.
-  assert (x / y - 4 * ulp1 <= round' (x / y) <= x / y + 4 * ulp1).
-    assert (tm1 :=  @error_le_ulp radix2 f32_exp
-        (@FLT_exp_valid (3 - 128 - 24) 24 eq_refl)
-        (round_mode mode_NE) (valid_rnd_round_mode _) (x / y)).
-    apply Rabs_def2b in tm1.  
-    fold (round' (x / y)) in tm1.
-    enough (ulp r2 f32_exp (x / y) <= 4 * ulp1) by lra.
-    rewrite ulp_neq_0; try lra.
-    unfold cexp, FLT_exp; rewrite Z.max_l by lia.
-    replace 4 with (bpow r2 2) by (simpl; lra).
-    unfold ulp1; rewrite <- bpow_plus.
-    apply bpow_le; lia.
-  assert (1 <= y + round' (x / y) < 15 / 2) by lra.
-  assert (1 <= mag_val _ _ (mag r2 (y + round' (x / y))) <= 3)%Z.
-    split.
-      assert (step : bpow r2 0 <= Rabs (y + round' (x / y))).
-        rewrite Rabs_pos_eq by lra.
-        simpl; lra.
-      apply mag_gt_bpow in step; lia.
-    assert (slt7 : y + round' (x / y) < 15 / 2) by  lra.
-    apply Rlt_le, (mag_le r2) in slt7;[ | lra].
-    enough (mag_val _ _ (mag r2 (15/2)) = 3)%Z by lia.
-    apply mag_unique; rewrite Rabs_pos_eq; simpl; lra.
-  assert (y + round' (x / y) - 4 * ulp1 <=
-          round' (y + round' (x / y)) <= y + round' (x / y) + 4 * ulp1).
-    assert (tm1 :=  @error_le_ulp radix2 f32_exp
-        (@FLT_exp_valid (3 - 128 - 24) 24 eq_refl)
-        (round_mode mode_NE) (valid_rnd_round_mode _) (y + round' (x / y))).
-    fold (round' (y + round' (x / y))) in tm1. 
-    apply Rabs_def2b in tm1.  
-    enough (ulp r2 f32_exp (y + round' (x / y)) <= 4 * ulp1) by lra.
-    rewrite ulp_neq_0; try lra.
-    unfold cexp, FLT_exp; rewrite Z.max_l by lia.
-    replace 4 with (bpow r2 2) by (simpl; lra).
-    unfold ulp1; rewrite <- bpow_plus.
-    apply bpow_le; lia.
-  *)
+assert (bigy : sqrt x - 16 * bpow r2 (-23) <= y <= sqrt x + 3).
+  fold ulp1; lra.
+assert (tmp := from_g_proof x y intx bigy).
+assert (ulp1 = 2 * bpow r2 (-24)) by (unfold ulp1; simpl; lra).
+enough (-bpow r2 (-24) <= (y + (x / y)) / 2 - sqrt x <= bpow r2 (-24)) by lra.
+rewrite <- (sqrt_sqrt x) at 1 3 by lra.
+replace ((y + (sqrt x * sqrt x) / y) / 2 - sqrt x) with
+   ((y - sqrt x) ^ 2 / (2 * y)) by (field; lra).
+apply Rabs_le_inv; rewrite Rabs_pos_eq; cycle 1.
+  apply Rmult_le_pos;[apply pow2_ge_0 | apply Rlt_le, Rinv_0_lt_compat]; lra.
+apply Rle_trans with ((y - sqrt x) ^ 2 / 1).
+apply Rmult_le_compat_l;[apply pow2_ge_0 | apply Rinv_le_contravar;lra].
+unfold Rdiv; rewrite Rinv_1, Rmult_1_r.
+replace (bpow r2 (-24)) with (bpow r2 (-12) ^ 2) by (compute; lra).
+assert (ulp1 = bpow r2 (-23)) by reflexivity.
+destruct (Rle_dec y (sqrt x)).
+  replace ((y - sqrt x) ^ 2) with ((sqrt x - y) ^ 2) by ring.
+  apply pow_incr; split;[lra | ].
+  apply Rle_trans with (16 * bpow r2 (-23));[ |compute]; lra.
+apply pow_incr; split;[lra | ].
+apply Rle_trans with (16 * bpow r2 (-23));[ | compute]; lra.
+Qed.
 
 Section main_loop_reasoning.
 
-(* This section is useless, as main_loop_prop has the same statement
-  as main_loop_ind.  It is here to make the next reasoning steps more
-  easily visible. *)
 Variable x : float32.
 
-Definition invariant (p : float32 * float32) :=
-  (1 <= B2R' (fst p) < 4)%R /\
-  (sqrt (B2R' x) - 6 * ulp1 <= B2R' (snd p) <= B2R' x)%R.
+Hypothesis intx : 1 <= B2R' x <= 4.
 
-Hypothesis invariant_spec :
+Definition invariant (p : float32 * float32) :=
+    fst p = x /\
+    (sqrt (B2R' x) - 16 * ulp1 <= B2R' (snd p) <= 
+       Rmax (B2R' x) (sqrt (B2R' x) + 16 * ulp1))%R.
+
+(* This axiom is actually proved in another file, for a much wider
+  range of values. *)
+Axiom body_exp_val : forall x y,
+  0 <= B2R' x <= 4 -> 0 <= B2R' y <= 4 ->
+  B2R' (body_exp x y) =
+  round' (round' (B2R' y + round' (B2R' x / B2R' y )) / 2).
+
+Lemma invariant_spec :
   forall x y,  Bcompare _ _ (body_exp x y) y = Some Lt ->
               invariant (x, y) ->
               invariant (x, body_exp x y).
-
+Proof.
+intros x' y cmp [cnd1 cnd2]; simpl in cnd1; rewrite cnd1 in cnd2 |- *.
+clear cnd1; split;[reflexivity | ].
+simpl.
+assert (1 <= sqrt (B2R' x)).
+  now rewrite <- sqrt_1; apply sqrt_le_1_alt.
+assert (sqrt (B2R' x) <= 2).
+  replace 2 with (sqrt(2 ^ 2)) by (rewrite sqrt_pow2; try lra).
+  apply sqrt_le_1_alt; lra.
+assert (0 < ulp1 < / 1024) by (unfold ulp1; simpl; lra).
+destruct (Rle_dec (B2R' y) (sqrt (B2R' x) + 16 * ulp1)) as [yl16 | yg16].
+  assert (tmp:= converge_below_16 _ (B2R' y) intx (conj (proj1 cnd2) yl16)).
+  rewrite body_exp_val; simpl in cnd2; try lra.
+  assert (tmp1 := converge_below_16 _ (B2R' y) intx (conj (proj1 cnd2) yl16)).
+  split; [lra | ].
+  apply Rle_trans with (sqrt (B2R' x) + 16 * ulp1).
+    lra.
+  apply Rmax_r.
+assert (tmp := decrease_above_16 _ (B2R' y) intx).
 Variable final : float32 -> Prop.
 
 Hypothesis invariant_final :
