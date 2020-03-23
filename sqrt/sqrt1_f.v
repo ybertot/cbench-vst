@@ -2,6 +2,7 @@ From Flocq Require Core Binary.
 Require Import Reals Gappa.Gappa_library Psatz.
 Import Defs Raux FLT Generic_fmt Gappa_definitions Binary Ulp.
 Require Import FunInd Recdef.
+(* This file is generated from sqrt1.g *)
 Require from_g.
 
 Definition float32 := binary_float 24 128.
