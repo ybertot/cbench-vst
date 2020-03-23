@@ -394,15 +394,19 @@ Definition ulp1 := bpow radix2 (-23).
 
 Lemma pure_decrease_16 (x y : R) :
   1 <= x <= 4 -> sqrt x + 16 * ulp1 <= y <= x ->
-  (y + x / y) / 2 < y - 8 * ulp1.
+  sqrt x <= (y + x / y) / 2 < y - 8 * ulp1.
 Proof.
 intros intx inty.
 assert (1 <= sqrt x).
   now rewrite <- sqrt_1; apply sqrt_le_1_alt.
 assert (0 < ulp1) by (unfold ulp1; simpl; lra).
-rewrite <- (sqrt_sqrt x) by lra.
+rewrite <- (sqrt_sqrt x) at 2 3 by lra.
 replace ((y + (sqrt x * sqrt x) / y) / 2) with
    (sqrt x + (y - sqrt x) / 2 * ((y - sqrt x)/ y)) by (field; lra).
+split.
+  enough (0 <= (y - sqrt x) / 2 * ((y - sqrt x) / y)) by lra.
+  apply Rmult_le_pos;[lra | apply Rmult_le_pos;[lra | ] ].
+  apply Rlt_le, Rinv_0_lt_compat; lra.
 apply Rlt_le_trans with (sqrt x + ((y - sqrt x) / 2) * 1);[ | lra].
 apply Rplus_lt_compat_l, Rmult_lt_compat_l; try lra.
 apply Rmult_lt_reg_r with y;[lra |unfold Rdiv; rewrite Rmult_assoc, Rinv_l ].
@@ -412,7 +416,7 @@ Qed.
 
 Lemma decrease_above_16 (x y : R) :
   1 <= x <= 4 -> sqrt x + 16 * ulp1 <= y <= x ->
-  round' (round' (y + round' (x / y)) / 2) < y.
+  sqrt x - 16 * ulp1 <= round' (round' (y + round' (x / y)) / 2) < y.
 Proof.
 intros intx inty.
 assert (0 < ulp1 < / 1024) by (unfold ulp1; simpl; lra).
@@ -420,6 +424,10 @@ assert (tmp := from_g_proof x y intx).
 assert (1 <= sqrt x).
   now rewrite <- sqrt_1; apply sqrt_le_1_alt.
 assert (sqrt x - 16 * bpow r2 (-23) <= y <= sqrt x + 3) by (fold ulp1; lra).
+split.
+  apply Rle_trans with ((y + x / y) / 2 - 9 * bpow r2 (-24));[ | lra].
+  assert (tmp2 := pure_decrease_16 _ _ intx inty).
+  enough (9 * bpow r2 (-24) < 16 * ulp1);[ | compute]; lra.
 apply Rle_lt_trans with ((y + x / y) / 2 + 9 * bpow r2 (-24));[lra | ].
 clear tmp.
 assert (tmp2 := pure_decrease_16 _ _ intx inty).
@@ -469,7 +477,7 @@ Hypothesis intx : 1 <= B2R' x <= 4.
 Definition invariant (p : float32 * float32) :=
     fst p = x /\
     (sqrt (B2R' x) - 16 * ulp1 <= B2R' (snd p) <= 
-       Rmax (B2R' x) (sqrt (B2R' x) + 16 * ulp1))%R.
+       Rmax (B2R' x) (sqrt (B2R' x) + 5 * ulp1))%R.
 
 (* This axiom is actually proved in another file, for a much wider
   range of values. *)
@@ -477,6 +485,10 @@ Axiom body_exp_val : forall x y,
   0 <= B2R' x <= 4 -> 0 <= B2R' y <= 4 ->
   B2R' (body_exp x y) =
   round' (round' (B2R' y + round' (B2R' x / B2R' y )) / 2).
+
+Axiom invariant_test : forall x' y,
+  invariant (x', y) -> Bcompare _ _ (body_exp x y) y <> Some Lt ->
+  ~ (B2R' (body_exp x y) < B2R' y).
 
 Lemma invariant_spec :
   forall x y,  Bcompare _ _ (body_exp x y) y = Some Lt ->
@@ -492,28 +504,83 @@ assert (sqrt (B2R' x) <= 2).
   replace 2 with (sqrt(2 ^ 2)) by (rewrite sqrt_pow2; try lra).
   apply sqrt_le_1_alt; lra.
 assert (0 < ulp1 < / 1024) by (unfold ulp1; simpl; lra).
+
 destruct (Rle_dec (B2R' y) (sqrt (B2R' x) + 16 * ulp1)) as [yl16 | yg16].
   assert (tmp:= converge_below_16 _ (B2R' y) intx (conj (proj1 cnd2) yl16)).
-  rewrite body_exp_val; simpl in cnd2; try lra.
   assert (tmp1 := converge_below_16 _ (B2R' y) intx (conj (proj1 cnd2) yl16)).
+  rewrite body_exp_val; simpl in cnd2; try lra.
   split; [lra | ].
-  apply Rle_trans with (sqrt (B2R' x) + 16 * ulp1).
+  apply Rle_trans with (sqrt (B2R' x) + 5 * ulp1).
     lra.
   apply Rmax_r.
-assert (tmp := decrease_above_16 _ (B2R' y) intx).
-Variable final : float32 -> Prop.
+destruct (Rle_dec (B2R' x) (sqrt (B2R' x) + 5 * ulp1)) as [xclose | xfar].
+  rewrite Rmax_right in cnd2 by auto; simpl in cnd2.
+  assert (yl16 : B2R' y <= sqrt (B2R' x) + 16 * ulp1) by lra.
+  assert (tmp1 := converge_below_16 _ (B2R' y) intx (conj (proj1 cnd2) yl16)).
+  split; [| rewrite Rmax_right]; lra.
+simpl in cnd2; rewrite Rmax_left in cnd2 by lra.
+assert (yg16' : sqrt (B2R' x) + 16 * ulp1 <= B2R' y) by lra.
+rewrite body_exp_val; simpl in cnd2; try lra.
+assert (tmp := decrease_above_16 _ (B2R' y) intx (conj yg16' (proj2 cnd2))).
+split;[ | rewrite Rmax_left]; lra.
+Qed.
 
-Hypothesis invariant_final :
-  forall x y, invariant (x, y) ->
-     Float32.cmp Integers.Clt (body_exp x y) y = false ->
-     final (body_exp x y).
+Definition final (v : float32) :=
+  sqrt (B2R' x) - 5 * ulp1 <= B2R' v <= sqrt (B2R' x) + 5 * ulp1.
 
-Lemma main_loop_prop x y :
-  invariant (x, y) -> final (main_loop (x, y)).
+Lemma invariant_initial : invariant (x, x).
 Proof.
-apply main_loop_ind; clear x y.
-  now intros p x y pxy test IH v; apply IH, invariant_spec.
-now intros p x y pxy test v; apply invariant_final.
+assert (0 < ulp1 < / 1024) by (unfold ulp1; simpl; lra).
+split;[reflexivity | ]; simpl; split.
+  apply Rle_trans with (sqrt (B2R' x));[lra | ].
+  assert (1 <= sqrt (B2R' x)).
+    now rewrite <- sqrt_1; apply sqrt_le_1_alt.
+  rewrite <- (Rmult_1_r (sqrt (B2R' x))).
+  rewrite <- (sqrt_sqrt (B2R' x)) at 2 by lra.
+  apply Rmult_le_compat_l; lra.
+now apply Rmax_l.
+Qed.
+
+Lemma invariant_final :
+  forall x' y, invariant (x', y) ->
+     Bcompare 24 128 (body_exp x y) y <> Some Lt ->
+     final (body_exp x' y).
+Proof.
+intros x' y iv test.
+assert (0 < ulp1 < / 1024) by (unfold ulp1; simpl; lra).
+assert (sqrt (B2R' x) <= 2).
+  replace 2 with (sqrt(2 ^ 2)) by (rewrite sqrt_pow2; try lra).
+  apply sqrt_le_1_alt; lra.
+assert (1 <= sqrt (B2R' x)).
+  now rewrite <- sqrt_1; apply sqrt_le_1_alt.
+apply (invariant_test _ _ iv) in test.
+destruct iv as [cnd1 cnd2]; simpl in cnd1, cnd2; rewrite cnd1; clear x' cnd1.
+revert test.
+unfold final; rewrite body_exp_val; try lra; cycle 1.
+  destruct (Rle_dec (B2R' x) (sqrt (B2R' x) + 5 * ulp1)).
+    rewrite Rmax_right in cnd2; lra.
+  rewrite Rmax_left in cnd2; lra.
+intros test.
+destruct (Rle_dec (B2R' y) (sqrt (B2R' x) + 16 * ulp1)) as [yl16 | yg16].
+  assert (tmp := converge_below_16 _ _ intx (conj (proj1 cnd2) yl16)); lra.
+assert (inty : sqrt (B2R' x) + 16 * ulp1 <= B2R' y <= B2R' x).
+  destruct (Rle_dec (B2R' x) (sqrt (B2R' x) + 5 * ulp1)).
+    rewrite Rmax_right in cnd2; lra.
+  rewrite Rmax_left in cnd2; lra.
+assert (tmp := decrease_above_16 _ (B2R' y) intx inty); lra.
+Qed.
+
+Lemma main_loop_prop :
+  final (main_loop (x, x)).
+Proof.
+generalize invariant_initial.
+apply main_loop_ind.
+  now intros p x' y pxy test IH v; apply IH, invariant_spec.
+intros p x' y pxy test vtest cndtest iv. 
+apply invariant_final; auto.
+destruct iv as [cnd1 cnd2]; rewrite <- cnd1; simpl; rewrite vtest.
+destruct test as [c |] eqn: tq; try discriminate.
+destruct c; try discriminate; contradiction.
 Qed.
 
 End main_loop_reasoning.
