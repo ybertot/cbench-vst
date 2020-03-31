@@ -1312,7 +1312,7 @@ Lemma invariant_spec_1_4_R  x' y :
   invariantR x' y ->
   invariantR x' (body_exp_R x' y).
 Proof.
-unfold invariantR; intros intx' sge1 (* test *) cnd2.
+unfold invariantR; intros intx' sge1 cnd2.
 destruct (Rle_dec y (sqrt x' + 16 * ulp1 * sqrt x'))
      as [yl16 | yg16].
   assert (tmp:= converge_below_16 _ y intx' (conj (proj1 cnd2) yl16)).
