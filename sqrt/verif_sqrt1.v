@@ -62,8 +62,8 @@ do 2 EExists; entailer!.
 rewrite Float32_div_eq, Float32_add_eq.
 change (float_div _ (float_add _ _ _) _) with (body_exp Float32.binop_nan x y).
 rewrite main_loop_equation in H0.
-rewrite Float32_cmp_eq.
-destruct (Binary.Bcompare 24 128 (body_exp Float32.binop_nan x y) y); try destruct c; auto.
+rewrite Float32_cmp_lt_eq.
+destruct (Binary.Bcompare ms es (body_exp Float32.binop_nan x y) y); try destruct c; auto.
 Intros y z.
 forward_if.
 +
@@ -87,12 +87,12 @@ Definition sqrt_newton_spec2 :=
    DECLARE _sqrt_newton
    WITH x: float32
    PRE [ tfloat ]
-       PROP ( 1 <= float32_to_real x < Rdefinitions.Rinv 2 * float32_to_real predf32max)
+       PROP (B2R' f32min' <= B2R' x < Rdefinitions.Rinv 2 * B2R' predf32max)
        PARAMS (Vsingle x) GLOBALS()
        SEP ()
     POST [ tfloat ]
-       PROP (Rabs (float32_to_real (fsqrt x) - R_sqrt.sqrt (float32_to_real x)) <=
-                             5 / (2 ^ 23) * R_sqrt.sqrt (float32_to_real x))
+       PROP (Rabs (B2R' (fsqrt x) - R_sqrt.sqrt (B2R' x)) <=
+                             5 / (2 ^ Z.to_nat(ms - 1)) * R_sqrt.sqrt (B2R' x))
        LOCAL (temp ret_temp (Vsingle (fsqrt x)))
        SEP ().
 Close Scope R_scope.
@@ -107,7 +107,7 @@ split; auto. intros x [? ?]. Exists x emp.
 simpl in x.
 normalize.
 match goal with |- context [PROPx (?A::_)] => set (P:=A) end.
-set (C := (Rdiv 5  (pow 2 23))).
+set (C := (Rdiv 5  (pow 2 (Z.to_nat (ms - 1))))).
 unfold_for_go_lower; normalize. simpl; entailer!; intros.
 entailer!.
 apply fsqrt_correct; auto.
